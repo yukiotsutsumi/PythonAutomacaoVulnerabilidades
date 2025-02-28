@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 import os
 
+#variaveis
 products = [
     "openSUSE", "Windows", "MongoDB", "SAP BusinessObjects",
     "Huawei", "Opera browser"
@@ -14,13 +15,14 @@ nvd_api_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 api_key = "c282a9f9-eec5-4a79-9f9b-c8d08468c762"
 
+#funcoes pequenas auxiliares
 def format_date(date_str):
     return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 def get_today_date():
     return datetime.today().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-# Função para buscar vulnerabilidades por produto e data
+#funcao grandona de fato
 def search_vulnerabilities(start_date, products):
     start_date_obj = format_date(start_date)
     end_date_obj = get_today_date()
@@ -46,9 +48,8 @@ def search_vulnerabilities(start_date, products):
 
                 # Status HTTP
                 print(f"Status da resposta para {product}: {response.status_code}")
-                # print(f"Resposta: {response.text[:1000]}")
 
-                response.raise_for_status()  # Exceção em caso de erro HTTP
+                response.raise_for_status()  # excecao
 
                 request_successful = response.status_code == 200
 
@@ -57,18 +58,18 @@ def search_vulnerabilities(start_date, products):
                     items = data.get("vulnerabilities", [])
                     print(f"Items encontrados para {product}: {len(items)}")
                     for item in items:
-                        item["product"] = product  # Adiciona o nome do produto a cada item
+                        item["product"] = product  # add o nome do produto a cada item
                     vulnerabilities.extend(items)
 
-                    # Checando se existe uma próxima página
+                    # checagem de proxima pagina
                     if "nextPage" in data.get("result", {}):
                         params["startIndex"] += params["resultsPerPage"]
                     else:
-                        break  # Sai do loop se não houver mais páginas
+                        break  # vaza do loop se não houver mais páginas
                 else:
                     print(f"Erro ao buscar vulnerabilidades para {product}: {response.status_code}")
                     print(f"Detalhes: {response.text}")
-                    break  # Sai do loop em caso de erro irreversível
+                    break  # vaza do loop em caso de erro irreversível
             except requests.exceptions.HTTPError as http_err:
                 print(f"Erro HTTP ao conectar à API para {product}: {http_err}")
                 print(f"Detalhes: {response.text}")
@@ -79,10 +80,10 @@ def search_vulnerabilities(start_date, products):
 
     return vulnerabilities
 
-# Buscar vulnerabilidades com link
+# buscar vulnerabilidades
 vulnerabilities = search_vulnerabilities(start_date, products)
 
-# Verificar se a lista de vulnerabilidades está vazia
+# checar se a lista de vulnerabilidades eh vazia
 print(f"Verificando lista de vulnerabilidades: {len(vulnerabilities)} vulnerabilidades encontradas")
 
 if vulnerabilities:
@@ -95,7 +96,7 @@ if vulnerabilities:
         published_date = vuln.get("cve", {}).get("published", "No publish date available")
         product = vuln.get("product", "No product available")
 
-        # Gerar URL para o CVE
+        # gerar link de cada cve independente
         cve_url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
 
         print(f"CVE ID: {cve_id}")
@@ -105,7 +106,7 @@ if vulnerabilities:
         print(f"Descrição: {description}")
         print("-" * 80)
 
-        # Adicionar os dados a uma lista para salvar em Excel
+        # add os dados a uma lista para salvar em excel
         vuln_data.append({
             "CVE ID": cve_id,
             "Produto": product,
@@ -114,10 +115,10 @@ if vulnerabilities:
             "Descrição": description
         })
 
-    # Criar um DataFrame do pandas com os novos dados
+    # criacao um dataframe do pandas com os novos dados
     df_combined = pd.DataFrame(vuln_data)
 
-    # Criar um DataFrame com hyperlinks
+    # criacao de um dataframe com hyperlinks
     writer = pd.ExcelWriter("vulnerabilidades.xlsx", engine="xlsxwriter")
 
     for product in products:
@@ -130,51 +131,67 @@ if vulnerabilities:
             workbook  = writer.book
             worksheet = writer.sheets[product]
 
-            # Definir estilos
+            # diferenciacao de titulo e resultado com estilos
             header_format = workbook.add_format({'bold': True, 'bg_color': '#e189a5', 'border': 1})
             cell_format = workbook.add_format({'bg_color': '#ffecef', 'border': 1})
 
-            # Aplicar estilo ao cabeçalho
+            # estilo no cabeçalho
             for col_num, value in enumerate(df_product.columns.values):
                 worksheet.write(0, col_num, value, header_format)
 
-            # Aplicar estilo às células dos resultados
+            # estilo nas células dos resultados
             for row_num in range(1, len(df_product) + 1):
                 for col_num in range(len(df_product.columns)):
                     worksheet.write(row_num, col_num, df_product.iloc[row_num - 1, col_num], cell_format)
 
-            # Criar hyperlinks e aplicar estilo à coluna URL
+            # hyperlinks e estilo da coluna URL
             for row_num, url in enumerate(df_product["URL"], start=1):
                 worksheet.write_url(f"D{row_num + 1}", url, cell_format)
 
-            # Ajustar largura das colunas
+            # largura das colunas
             for col_num, col in enumerate(df_product.columns):
                 max_len = max(df_product[col].astype(str).map(len).max(), len(col)) + 2
                 worksheet.set_column(col_num, col_num, max_len)
 
-    # Criar gráfico de linha no Excel
+    # criacao do gráfico de linha
     df_combined['Data de publicação'] = pd.to_datetime(df_combined['Data de publicação'], errors='coerce')
     df_combined = df_combined.dropna(subset=['Data de publicação'])
 
     df_combined['Data de publicação'] = df_combined['Data de publicação'].dt.date
-    df_grouped = df_combined.groupby('Data de publicação').size().reset_index(name='Count')
-
     chart_sheet = workbook.add_worksheet('Gráfico')
     chart = workbook.add_chart({'type': 'line'})
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'cyan']
 
-    chart.add_series({
-        'categories': ['Gráfico', 1, 0, len(df_grouped), 0],
-        'values':     ['Gráfico', 1, 1, len(df_grouped), 1],
-        'line':       {'color': 'blue'},
-    })
+    # separar apenas as datas unicas do grafico
+    all_dates = sorted(df_combined['Data de publicação'].unique())
+
+    # conversao all_dates para uma Series para calcular o comprimento máximo
+    all_dates_series = pd.Series(all_dates)
+
+    # preencher a coluna de datas
+    chart_sheet.write_row('A1', ['Data de Publicação'] + products, header_format)
+    chart_sheet.write_column('A2', all_dates, workbook.add_format({'num_format': 'yyyy-mm-dd'}))
+
+    # ajustar a largura da coluna de datas
+    max_date_len = max(all_dates_series.astype(str).map(len).max(), len('Data de Publicação')) + 2
+    chart_sheet.set_column(0, 0, max_date_len)
+
+    # add dados para cada produto
+    for idx, product in enumerate(products):
+        df_grouped = df_combined[df_combined["Produto"] == product].groupby('Data de publicação').size().reindex(all_dates, fill_value=0).reset_index(name='Count')
+        chart.add_series({
+            'name': product,
+            'categories': ['Gráfico', 1, 0, len(all_dates), 0],
+            'values': ['Gráfico', 1, idx + 1, len(all_dates), idx + 1],
+            'line': {'color': colors[idx % len(colors)]},
+        })
+        chart_sheet.write_column(1, idx + 1, df_grouped['Count'])
 
     chart.set_title({'name': 'Número de Vulnerabilidades em Função do Tempo'})
     chart.set_x_axis({'name': 'Data de Publicação'})
     chart.set_y_axis({'name': 'Número de Vulnerabilidades'})
-    chart_sheet.write_row('A1', ['Data de Publicação', 'Número de Vulnerabilidades'], header_format)
-    chart_sheet.write_column('A2', df_grouped['Data de publicação'].astype(str))
-    chart_sheet.write_column('B2', df_grouped['Count'])
-    chart_sheet.insert_chart('D2', chart)
+    chart.set_size({'width': 800, 'height': 400})  # altura e largura do gráfico
+    chart_sheet.insert_chart('G2', chart)
 
     writer.close()
     print("Vulnerabilidades salvas em vulnerabilidades.xlsx, separadas por produto, com hyperlinks, estilos e gráficos")
