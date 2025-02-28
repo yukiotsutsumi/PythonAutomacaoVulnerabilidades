@@ -36,7 +36,7 @@ def search_vulnerabilities(start_date, products):
             "keywordSearch": product,
             "pubStartDate": start_date_obj,
             "pubEndDate": end_date_obj,
-            "resultsPerPage": 200,
+            "resultsPerPage": 40,
             "startIndex": 0
         }
 
@@ -114,36 +114,45 @@ if vulnerabilities:
             "Descrição": description
         })
 
-    # Checar se o arquivo Excel já existe
-    if os.path.exists("vulnerabilidades.xlsx"):
-        # Se o arquivo existe, ler o conteúdo existente
-        df_existing = pd.read_excel("vulnerabilidades.xlsx")
-
-        # Criar um DataFrame do pandas com os novos dados
-        df_new = pd.DataFrame(vuln_data)
-
-        # Concatenar dados existentes e novos
-        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-
-        # Remover duplicatas com base no CVE ID
-        df_combined.drop_duplicates(subset=["CVE ID"], keep="last", inplace=True)
-    else:
-        # Se o arquivo não existe, criar um novo
-        df_combined = pd.DataFrame(vuln_data)
+    # Criar um DataFrame do pandas com os novos dados
+    df_combined = pd.DataFrame(vuln_data)
 
     # Criar um DataFrame com hyperlinks
     writer = pd.ExcelWriter("vulnerabilidades.xlsx", engine="xlsxwriter")
-    df_combined.to_excel(writer, index=False, sheet_name="Vulnerabilidades")
 
-    # Acessar o workbook e worksheet
-    workbook  = writer.book
-    worksheet = writer.sheets["Vulnerabilidades"]
+    for product in products:
+        df_product = df_combined[df_combined["Produto"] == product]
+        
+        if not df_product.empty:
+            df_product.to_excel(writer, index=False, sheet_name=product)
 
-    # Criar hyperlinks
-    for row_num, url in enumerate(df_combined["URL"], start=1):
-        worksheet.write_url(f"D{row_num + 1}", url)  # Corrige a coluna da URL para a coluna correta
+            # Acessar o workbook e worksheet
+            workbook  = writer.book
+            worksheet = writer.sheets[product]
 
+            # Definir estilos
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#e189a5', 'border': 1})
+            cell_format = workbook.add_format({'bg_color': '#ffecef', 'border': 1})
+
+            # Aplicar estilo ao cabeçalho
+            for col_num, value in enumerate(df_product.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+
+            # Aplicar estilo às células dos resultados
+            for row_num in range(1, len(df_product) + 1):
+                for col_num in range(len(df_product.columns)):
+                    worksheet.write(row_num, col_num, df_product.iloc[row_num - 1, col_num], cell_format)
+
+            # Criar hyperlinks e aplicar estilo à coluna URL
+            for row_num, url in enumerate(df_product["URL"], start=1):
+                worksheet.write_url(f"D{row_num + 1}", url, cell_format)
+
+            # Ajustar largura das colunas
+            for col_num, col in enumerate(df_product.columns):
+                max_len = max(df_product[col].astype(str).map(len).max(), len(col)) + 2
+                worksheet.set_column(col_num, col_num, max_len)
+                
     writer.close()
-    print("Vulnerabilidades salvas em vulnerabilidades.xlsx com hyperlinks")
+    print("Vulnerabilidades salvas em vulnerabilidades.xlsx, separadas por produto, com hyperlinks e estilos")
 else:
     print("Nenhuma vulnerabilidade encontrada.")
