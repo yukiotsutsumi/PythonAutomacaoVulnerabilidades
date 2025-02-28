@@ -23,7 +23,7 @@ def get_today_date():
 # Função para buscar vulnerabilidades por produto e data
 def search_vulnerabilities(start_date, products):
     start_date_obj = format_date(start_date)
-    end_date_obj = get_today_date() 
+    end_date_obj = get_today_date()
     vulnerabilities = []
 
     headers = {
@@ -43,21 +43,23 @@ def search_vulnerabilities(start_date, products):
         while True:
             try:
                 response = requests.get(nvd_api_url, params=params, headers=headers)
-                
+
                 # Status HTTP
                 print(f"Status da resposta para {product}: {response.status_code}")
                 # print(f"Resposta: {response.text[:1000]}")
-                
+
                 response.raise_for_status()  # Exceção em caso de erro HTTP
-                
+
                 request_successful = response.status_code == 200
-                
+
                 if request_successful:
                     data = response.json()
                     items = data.get("vulnerabilities", [])
                     print(f"Items encontrados para {product}: {len(items)}")
+                    for item in items:
+                        item["product"] = product  # Adiciona o nome do produto a cada item
                     vulnerabilities.extend(items)
-                    
+
                     # Checando se existe uma próxima página
                     if "nextPage" in data.get("result", {}):
                         params["startIndex"] += params["resultsPerPage"]
@@ -91,45 +93,57 @@ if vulnerabilities:
         cve_id = vuln.get("cve", {}).get("id", "N/A")
         description = next((desc["value"] for desc in vuln.get("cve", {}).get("descriptions", []) if desc["lang"] == "en"), "No description available")
         published_date = vuln.get("cve", {}).get("published", "No publish date available")
-        
+        product = vuln.get("product", "No product available")
+
         # Gerar URL para o CVE
         cve_url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
-        
+
         print(f"CVE ID: {cve_id}")
-        print(f"Published Date: {published_date}")
+        print(f"Produto: {product}")
+        print(f"Data de publicação: {published_date}")
         print(f"URL: {cve_url}")
-        print(f"Description: {description}")
+        print(f"Descrição: {description}")
         print("-" * 80)
 
         # Adicionar os dados a uma lista para salvar em Excel
         vuln_data.append({
             "CVE ID": cve_id,
-            "Published Date": published_date,
+            "Produto": product,
+            "Data de publicação": published_date,
             "URL": cve_url,
-            "Description": description
+            "Descrição": description
         })
 
     # Checar se o arquivo Excel já existe
     if os.path.exists("vulnerabilidades.xlsx"):
         # Se o arquivo existe, ler o conteúdo existente
         df_existing = pd.read_excel("vulnerabilidades.xlsx")
-        
+
         # Criar um DataFrame do pandas com os novos dados
         df_new = pd.DataFrame(vuln_data)
-        
+
         # Concatenar dados existentes e novos
         df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-        
+
         # Remover duplicatas com base no CVE ID
         df_combined.drop_duplicates(subset=["CVE ID"], keep="last", inplace=True)
-        
-        # Salvar o DataFrame combinado de volta no arquivo Excel
-        df_combined.to_excel("vulnerabilidades.xlsx", index=False)
     else:
         # Se o arquivo não existe, criar um novo
-        df_new = pd.DataFrame(vuln_data)
-        df_new.to_excel("vulnerabilidades.xlsx", index=False)
+        df_combined = pd.DataFrame(vuln_data)
 
-    print("Vulnerabilidades salvas em vulnerabilidades.xlsx")
+    # Criar um DataFrame com hyperlinks
+    writer = pd.ExcelWriter("vulnerabilidades.xlsx", engine="xlsxwriter")
+    df_combined.to_excel(writer, index=False, sheet_name="Vulnerabilidades")
+
+    # Acessar o workbook e worksheet
+    workbook  = writer.book
+    worksheet = writer.sheets["Vulnerabilidades"]
+
+    # Criar hyperlinks
+    for row_num, url in enumerate(df_combined["URL"], start=1):
+        worksheet.write_url(f"D{row_num + 1}", url)  # Corrige a coluna da URL para a coluna correta
+
+    writer.close()
+    print("Vulnerabilidades salvas em vulnerabilidades.xlsx com hyperlinks")
 else:
     print("Nenhuma vulnerabilidade encontrada.")
