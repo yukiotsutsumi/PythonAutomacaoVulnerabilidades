@@ -1,5 +1,7 @@
 import requests
 from datetime import datetime
+import pandas as pd
+import os
 
 products = [
     "openSUSE", "Windows", "MongoDB", "SAP BusinessObjects",
@@ -44,7 +46,7 @@ def search_vulnerabilities(start_date, products):
                 
                 # Status HTTP
                 print(f"Status da resposta para {product}: {response.status_code}")
-                print(f"Resposta: {response.text[:1000]}")
+                # print(f"Resposta: {response.text[:1000]}")
                 
                 response.raise_for_status()  # Exceção em caso de erro HTTP
                 
@@ -83,6 +85,8 @@ print(f"Verificando lista de vulnerabilidades: {len(vulnerabilities)} vulnerabil
 
 if vulnerabilities:
     print(f"Vulnerabilidades encontradas: {len(vulnerabilities)}")
+    vuln_data = []
+
     for vuln in vulnerabilities:
         cve_id = vuln.get("cve", {}).get("id", "N/A")
         description = next((desc["value"] for desc in vuln.get("cve", {}).get("descriptions", []) if desc["lang"] == "en"), "No description available")
@@ -92,9 +96,40 @@ if vulnerabilities:
         cve_url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
         
         print(f"CVE ID: {cve_id}")
-        print(f"Description: {description}")
         print(f"Published Date: {published_date}")
         print(f"URL: {cve_url}")
+        print(f"Description: {description}")
         print("-" * 80)
+
+        # Adicionar os dados a uma lista para salvar em Excel
+        vuln_data.append({
+            "CVE ID": cve_id,
+            "Published Date": published_date,
+            "URL": cve_url,
+            "Description": description
+        })
+
+    # Checar se o arquivo Excel já existe
+    if os.path.exists("vulnerabilidades.xlsx"):
+        # Se o arquivo existe, ler o conteúdo existente
+        df_existing = pd.read_excel("vulnerabilidades.xlsx")
+        
+        # Criar um DataFrame do pandas com os novos dados
+        df_new = pd.DataFrame(vuln_data)
+        
+        # Concatenar dados existentes e novos
+        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+        
+        # Remover duplicatas com base no CVE ID
+        df_combined.drop_duplicates(subset=["CVE ID"], keep="last", inplace=True)
+        
+        # Salvar o DataFrame combinado de volta no arquivo Excel
+        df_combined.to_excel("vulnerabilidades.xlsx", index=False)
+    else:
+        # Se o arquivo não existe, criar um novo
+        df_new = pd.DataFrame(vuln_data)
+        df_new.to_excel("vulnerabilidades.xlsx", index=False)
+
+    print("Vulnerabilidades salvas em vulnerabilidades.xlsx")
 else:
     print("Nenhuma vulnerabilidade encontrada.")
