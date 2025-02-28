@@ -151,8 +151,32 @@ if vulnerabilities:
             for col_num, col in enumerate(df_product.columns):
                 max_len = max(df_product[col].astype(str).map(len).max(), len(col)) + 2
                 worksheet.set_column(col_num, col_num, max_len)
-                
+
+    # Criar gráfico de linha no Excel
+    df_combined['Data de publicação'] = pd.to_datetime(df_combined['Data de publicação'], errors='coerce')
+    df_combined = df_combined.dropna(subset=['Data de publicação'])
+
+    df_combined['Data de publicação'] = df_combined['Data de publicação'].dt.date
+    df_grouped = df_combined.groupby('Data de publicação').size().reset_index(name='Count')
+
+    chart_sheet = workbook.add_worksheet('Gráfico')
+    chart = workbook.add_chart({'type': 'line'})
+
+    chart.add_series({
+        'categories': ['Gráfico', 1, 0, len(df_grouped), 0],
+        'values':     ['Gráfico', 1, 1, len(df_grouped), 1],
+        'line':       {'color': 'blue'},
+    })
+
+    chart.set_title({'name': 'Número de Vulnerabilidades em Função do Tempo'})
+    chart.set_x_axis({'name': 'Data de Publicação'})
+    chart.set_y_axis({'name': 'Número de Vulnerabilidades'})
+    chart_sheet.write_row('A1', ['Data de Publicação', 'Número de Vulnerabilidades'], header_format)
+    chart_sheet.write_column('A2', df_grouped['Data de publicação'].astype(str))
+    chart_sheet.write_column('B2', df_grouped['Count'])
+    chart_sheet.insert_chart('D2', chart)
+
     writer.close()
-    print("Vulnerabilidades salvas em vulnerabilidades.xlsx, separadas por produto, com hyperlinks e estilos")
+    print("Vulnerabilidades salvas em vulnerabilidades.xlsx, separadas por produto, com hyperlinks, estilos e gráficos")
 else:
     print("Nenhuma vulnerabilidade encontrada.")
